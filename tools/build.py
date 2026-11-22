@@ -136,6 +136,9 @@ TEMPLATE = r"""<!DOCTYPE html>
 <title>安裝 QR掃描器 · QR 掃描器</title>
 <meta name="theme-color" content="#0A0C10">
 <meta name="color-scheme" content="dark light">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QR掃描器">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
@@ -162,6 +165,11 @@ code{display:block;padding:10px 12px;border-radius:12px;background:var(--surface
 .btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:14px;border:0;background:var(--surface2);color:var(--text);font:600 14px var(--font);cursor:pointer;text-decoration:none}
 .btn.primary{background:var(--accent);color:#fff}
 .btn:active{transform:scale(.97)}
+[hidden]{display:none!important}
+.alert{display:flex;gap:12px;align-items:flex-start;border-color:rgba(245,181,68,.5);background:rgba(245,181,68,.12);color:var(--text);font-size:14px;line-height:1.6}
+.alert .ic{color:#F5B544;margin-top:2px}
+.alert b{display:block;margin-bottom:2px}
+.alert .btns{margin-top:10px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .seg{display:flex;gap:4px;background:var(--surface2);padding:4px;border-radius:14px;margin-bottom:16px}
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border:0;border-radius:11px;background:none;color:var(--muted);font:600 14px var(--font);cursor:pointer}
@@ -195,6 +203,12 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
     <div><h1>安裝 QR掃描器</h1><p>像原生 App 一樣使用，離線也能掃描。</p></div>
   </header>
 
+  <section class="card alert" id="inapp" hidden role="alert">
+    <svg class="ic" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+    <div><b id="inappTitle">目前的瀏覽器無法安裝</b><span id="inappMsg"></span>
+      <div class="btns"><a class="btn primary" id="openChrome" href="#" hidden>用 Chrome 開啟</a><button class="btn" id="copy2">複製連結</button></div></div>
+  </section>
+
   <section class="card qr-card" aria-label="安裝 QR Code">
     <div class="qr">{{QR_SVG}}</div>
     <div class="qr-info">
@@ -202,7 +216,8 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
       <p>開啟相機或任何掃描器，掃描後在瀏覽器開啟，再依下方步驟加入主畫面。</p>
       <code>{{URL}}</code>
       <div class="btns">
-        <button class="btn primary" id="copy"><svg class="ic" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>複製連結</button>
+        <button class="btn primary" id="install" hidden><svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>一鍵安裝</button>
+        <button class="btn" id="copy"><svg class="ic" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>複製連結</button>
         <a class="btn" href="{{URL}}" target="_blank" rel="noopener"><svg class="ic" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>直接開啟</a>
         <button class="btn" id="print"><svg class="ic" viewBox="0 0 24 24"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>列印此頁</button>
       </div>
@@ -230,7 +245,7 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
 
     <div class="panel" id="p-android" role="tabpanel" aria-labelledby="t-android">
       <h3>Android（Chrome）</h3>
-      <p class="sub">Samsung Internet 等瀏覽器的選單名稱可能不同。</p>
+      <p class="sub">建議用 Chrome。若上方有「一鍵安裝」按鈕，直接按它即可；沒有的話再用下列步驟。</p>
       <ol>
         <li><span>用 Chrome 開啟上方連結。</span></li>
         <li><span>點右上角選單「⋮」<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>。</span></li>
@@ -282,6 +297,31 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
     }
     if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(URL_TEXT).then(function () { toast('已複製連結'); }, fallback); else fallback();
   });
+  // ---- 一鍵安裝（Android Chrome / 電腦 Chrome、Edge 支援；iOS 只能手動加入主畫面）----
+  var dp = null, btn = document.getElementById('install');
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); dp = e; btn.hidden = false; });
+  btn.addEventListener('click', function () {
+    if (!dp) return;
+    try { dp.prompt(); dp.userChoice.then(function (r) { if (r && r.outcome === 'accepted') toast('安裝中…'); dp = null; btn.hidden = true; }); }
+    catch (e) { toast('無法自動安裝，請依下方步驟手動安裝'); }
+  });
+  window.addEventListener('appinstalled', function () { btn.hidden = true; toast('已安裝 QR掃描器'); });
+  if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) btn.hidden = true;
+
+  // ---- 偵測 App 內建瀏覽器（LINE、Facebook、Instagram、微信等無法安裝）----
+  var inApp = /Line\/|FBAN|FBAV|Instagram|MicroMessenger|; wv\)|Messenger|Twitter|TikTok|GSA\//i.test(ua);
+  var isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\//i.test(ua);
+  var box = document.getElementById('inapp'), msg = document.getElementById('inappMsg');
+  if (inApp || (ios && !isSafari)) {
+    box.hidden = false;
+    if (ios) msg.textContent = ' iPhone／iPad 只有 Safari 能「加入主畫面」。請複製連結，改用 Safari 開啟。';
+    else {
+      msg.textContent = ' 這是 App 內建瀏覽器，無法安裝。請改用 Chrome 開啟，或複製連結貼到 Chrome。';
+      var oc = document.getElementById('openChrome'); oc.hidden = false;
+      oc.href = 'intent://' + location.host + location.pathname + '#Intent;scheme=https;package=com.android.chrome;end';
+    }
+  }
+  document.getElementById('copy2').addEventListener('click', function () { document.getElementById('copy').click(); });
   document.getElementById('print').addEventListener('click', function () { try { window.print(); } catch (e) { toast('此瀏覽器無法列印'); } });
 })();
 </script>
