@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<!-- ============================================================
+  Scanly · QR 掃描器（PWA）
+  單一檔案主程式：HTML + CSS + JavaScript 全部內建。
+  依賴：同層的 jsQR.js（離線備援解碼器）、manifest.json、sw.js 與圖示。
+  功能：相機即時掃描、相簿圖片解碼、結果智慧解析、歷史紀錄、
+        深淺色主題、離線可用、可安裝、新版本更新提示。
+============================================================ -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scanly · QR 掃描器</title>
+<meta name="description" content="快速、安全、可離線使用的 QR Code 與條碼掃描器。">
+
+<!-- PWA / iOS / Android 設定 -->
+<meta name="theme-color" content="#0A0C10">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scanly">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+
+<style>
+/* ============================================================
+   1. 設計代幣（Design Tokens）：預設深色，支援淺色與手動切換
+============================================================ */
+:root{
+  --bg:#0A0C10; --surface:#14171E; --surface-2:#1B1F28; --surface-3:#242936;
+  --text:#F2F4F8; --muted:#8B93A3; --line:rgba(255,255,255,.08);
+  --accent:#4C8DFF; --accent-ink:#fff; --accent-soft:rgba(76,141,255,.16);
+  --warn:#F5B544; --warn-soft:rgba(245,181,68,.14);
+  --danger:#FF6B6B; --ok:#34D399;
+  --glass:rgba(24,27,35,.72); --shadow:0 12px 40px rgba(0,0,0,.45);
+  --radius:20px; --tab-h:64px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"PingFang TC",monospace;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#F3F5F9; --surface:#FFFFFF; --surface-2:#F0F2F7; --surface-3:#E5E8F0;
+    --text:#0E1116; --muted:#667085; --line:rgba(15,20,30,.09);
+    --accent:#2F6BFF; --accent-soft:rgba(47,107,255,.12);
+    --warn:#B7791F; --warn-soft:rgba(245,181,68,.18); --danger:#D92D20; --ok:#0E9F6E;
+    --glass:rgba(255,255,255,.78); --shadow:0 12px 40px rgba(20,30,60,.16);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#F3F5F9; --surface:#FFFFFF; --surface-2:#F0F2F7; --surface-3:#E5E8F0;
+  --text:#0E1116; --muted:#667085; --line:rgba(15,20,30,.09);
+  --accent:#2F6BFF; --accent-soft:rgba(47,107,255,.12);
+  --warn:#B7791F; --warn-soft:rgba(245,181,68,.18); --danger:#D92D20; --ok:#0E9F6E;
+  --glass:rgba(255,255,255,.78); --shadow:0 12px 40px rgba(20,30,60,.16);
+}
+
+/* ============================================================
+   2. 基礎重設
+============================================================ */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--font);
+  -webkit-text-size-adjust:100%;overscroll-behavior:none;-webkit-font-smoothing:antialiased}
+body{position:fixed;inset:0;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* Lucide 風格圖示：統一 1.8px 線寬、圓角端點、無填色 */
+.ic{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ic.sm{width:18px;height:18px}.ic.lg{width:28px;height:28px}.ic.xl{width:40px;height:40px}
+
+/* ============================================================
+   3. App 外框與分頁
+============================================================ */
+#app{position:absolute;inset:0;display:flex;flex-direction:column}
+.view{position:absolute;inset:0;display:none;overflow:hidden}
+.view.active{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.scroll{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(var(--safe-t) + 18px) 16px calc(var(--tab-h) + var(--safe-b) + 40px)}
+.page{max-width:680px;margin:0 auto}
+.page-title{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:6px 4px 14px;display:flex;align-items:center;justify-content:space-between}
+
+/* 底部浮動分頁列（毛玻璃） */
+#tabbar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-b) + 12px);z-index:30;
+  width:min(420px,calc(100% - 28px));height:var(--tab-h);display:flex;gap:4px;padding:6px;
+  background:var(--glass);border:1px solid var(--line);border-radius:26px;
+  -webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);box-shadow:var(--shadow)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:20px;
+  color:var(--muted);font-size:11px;font-weight:600;transition:background .2s,color .2s}
+.tab[aria-selected="true"]{color:var(--accent);background:var(--accent-soft)}
+
+/* ============================================================
+   4. 掃描頁
+============================================================ */
+#view-scan{background:#000;color:#fff}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#video.mirror{transform:scaleX(-1)}
+#hit{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.mask{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;overflow:hidden}
+.finder{position:relative;width:min(70vmin,330px);aspect-ratio:1;border-radius:30px;transform:translateY(-7vh);
+  box-shadow:0 0 0 100vmax rgba(0,0,0,.52);transition:transform .3s}
+.finder .c{position:absolute;width:40px;height:40px;border:4px solid #fff;opacity:.95}
+.finder .tl{left:-2px;top:-2px;border-right:0;border-bottom:0;border-top-left-radius:30px}
+.finder .tr{right:-2px;top:-2px;border-left:0;border-bottom:0;border-top-right-radius:30px}
+.finder .bl{left:-2px;bottom:-2px;border-right:0;border-top:0;border-bottom-left-radius:30px}
+.finder .br{right:-2px;bottom:-2px;border-left:0;border-top:0;border-bottom-right-radius:30px}
+.finder .line{position:absolute;left:12%;right:12%;top:8%;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);box-shadow:0 0 16px var(--accent);
+  animation:sweep 2.4s ease-in-out infinite alternate}
+@keyframes sweep{to{top:92%}}
+.scanning-off .finder .line{animation:none;opacity:0}
+@media (prefers-reduced-motion:reduce){.finder .line{animation:none;top:50%}.view.active{animation:none}}
+
+.status{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--safe-t) + 16px);
+  padding:9px 16px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;
+  background:rgba(20,22,28,.6);border:1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.controls{position:absolute;left:0;right:0;bottom:calc(var(--tab-h) + var(--safe-b) + 34px);
+  display:flex;flex-direction:column;align-items:center;gap:16px}
+.ctl-row{display:flex;gap:18px}
+.fab{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:#fff;
+  background:rgba(30,33,42,.62);border:1px solid rgba(255,255,255,.14);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);transition:transform .15s,background .2s}
+.fab:active{transform:scale(.92)}
+.fab.on{background:var(--accent);border-color:transparent}
+.zoom{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:999px;width:min(280px,76vw);
+  background:rgba(30,33,42,.55);border:1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.zoom input{flex:1;accent-color:var(--accent);height:24px}
+.zoom span{font-size:12px;font-variant-numeric:tabular-nums;min-width:34px;text-align:right;font-weight:600}
+
+.cam-card{position:absolute;inset:0;display:grid;place-items:center;padding:24px;background:rgba(6,8,12,.86);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);z-index:5;text-align:center}
+.cam-card .inner{max-width:340px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.cam-card .badge{width:84px;height:84px;border-radius:26px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.cam-card h2{margin:6px 0 0;font-size:22px}
+.cam-card p{margin:0;color:#aab1c0;font-size:14px;line-height:1.6}
+
+/* ============================================================
+   5. 通用元件：按鈕、卡片、開關
+============================================================ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;
+  border-radius:16px;font-weight:650;font-size:15px;background:var(--surface-2);color:var(--text);
+  transition:transform .12s,filter .2s}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--danger)}
+.btn.block{width:100%}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.group-label{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--muted);margin:22px 8px 8px;text-transform:uppercase}
+.row{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 16px;width:100%;text-align:left}
+.row+.row{border-top:1px solid var(--line)}
+.row .ri{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:none}
+.row .rt{flex:1;min-width:0}
+.row .rt b{display:block;font-size:15px;font-weight:600}
+.row .rt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.4}
+.row .chev{color:var(--muted)}
+.switch{position:relative;width:51px;height:31px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch i{position:absolute;inset:0;border-radius:999px;background:var(--surface-3);transition:background .2s}
+.switch i::after{content:"";position:absolute;left:3px;top:3px;width:25px;height:25px;border-radius:50%;background:#fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .2s}
+.switch input:checked+i{background:var(--accent)}
+.switch input:checked+i::after{transform:translateX(20px)}
+.switch input:focus-visible+i{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;gap:2px}
+.seg button{padding:7px 12px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.2)}
+
+/* ============================================================
+   6. 歷史紀錄
+============================================================ */
+.search{display:flex;align-items:center;gap:10px;padding:0 14px;height:46px;border-radius:14px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.search input{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;font-size:15px;min-width:0}
+.chips{display:flex;gap:8px;margin:12px 0 14px;align-items:center}
+.chip{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chips .grow{flex:1}
+.icon-btn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--muted);background:var(--surface);border:1px solid var(--line)}
+.hist-item .ri.t-url{background:rgba(76,141,255,.16);color:#4C8DFF}
+.hist-item .star{color:var(--warn)}
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:56px 24px;text-align:center;color:var(--muted)}
+.empty .badge{width:76px;height:76px;border-radius:24px;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line)}
+.empty b{color:var(--text);font-size:17px}
+.empty span{font-size:14px;line-height:1.6}
+
+/* ============================================================
+   7. 底部彈出面板（結果 / 對話框）
+============================================================ */
+.backdrop{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .25s;
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.backdrop.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:50%;bottom:0;z-index:51;width:min(560px,100%);max-height:88dvh;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:28px 28px 0 0;
+  transform:translate(-50%,105%);transition:transform .32s cubic-bezier(.2,.9,.25,1);box-shadow:var(--shadow);
+  padding-bottom:calc(var(--safe-b) + 16px)}
+.sheet.open{transform:translate(-50%,0)}
+.sheet .grab{padding:10px 0 6px;display:grid;place-items:center;touch-action:none;cursor:grab}
+.sheet .grab i{width:40px;height:5px;border-radius:3px;background:var(--surface-3)}
+.sheet .body{overflow-y:auto;padding:6px 20px 8px;display:flex;flex-direction:column;gap:14px}
+.res-head{display:flex;align-items:center;gap:14px}
+.res-head .ri{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.res-head b{display:block;font-size:19px}
+.res-head small{color:var(--muted);font-size:13px}
+.content-box{background:var(--surface-2);border-radius:16px;padding:14px 16px;font-family:var(--mono);font-size:14px;line-height:1.55;
+  word-break:break-all;white-space:pre-wrap;max-height:160px;overflow:auto;user-select:text;-webkit-user-select:text}
+.fields{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.field{display:flex;gap:12px;padding:11px 14px;font-size:14px;align-items:center}
+.field+.field{border-top:1px solid var(--line)}
+.field span{color:var(--muted);flex:none;min-width:64px}
+.field b{font-weight:600;word-break:break-all;flex:1;user-select:text;-webkit-user-select:text}
+.field button{color:var(--accent);font-size:13px;font-weight:600}
+.warn{display:flex;gap:10px;padding:12px 14px;border-radius:14px;background:var(--warn-soft);color:var(--warn);font-size:13.5px;line-height:1.5}
+.actions{display:flex;flex-direction:column;gap:10px}
+.mini-row{display:flex;gap:10px}
+.mini-row .btn{flex:1;min-height:46px;padding:0 8px;font-size:14px}
+.dialog{position:fixed;left:50%;top:50%;z-index:61;width:min(340px,calc(100% - 40px));padding:22px;border-radius:24px;
+  background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+  transform:translate(-50%,-46%) scale(.95);opacity:0;pointer-events:none;transition:.2s}
+.dialog.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+.dialog h3{margin:0 0 8px;font-size:18px}
+.dialog p{margin:0 0 18px;color:var(--muted);font-size:14px;line-height:1.6}
+.dialog .mini-row{margin-top:4px}
+
+/* 安裝教學內容 */
+.steps{margin:0 0 14px;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;counter-reset:s}
+.steps li{counter-increment:s;display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.55}
+.steps li::before{content:counter(s);flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;margin-top:1px}
+.steps .ic{display:inline-block;vertical-align:-5px;margin:0 2px;color:var(--accent)}
+
+/* ============================================================
+   8. Toast 與更新橫幅
+============================================================ */
+#toasts{position:fixed;left:0;right:0;z-index:80;top:calc(var(--safe-t) + 14px);display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none}
+.toast{pointer-events:auto;max-width:min(420px,calc(100% - 28px));display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:16px;
+  background:var(--glass);border:1px solid var(--line);box-shadow:var(--shadow);font-size:14px;font-weight:550;color:var(--text);
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);animation:tin .3s cubic-bezier(.2,.9,.25,1)}
+.toast.out{opacity:0;transform:translateY(-8px);transition:.25s}
+.toast button{color:var(--accent);font-weight:700;white-space:nowrap}
+@keyframes tin{from{opacity:0;transform:translateY(-14px) scale(.96)}}
+#update{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + var(--safe-b) + 28px);z-index:70;
+  display:flex;align-items:center;gap:12px;padding:12px 14px 12px 18px;border-radius:18px;background:var(--accent);color:#fff;
+  font-size:14px;font-weight:650;box-shadow:var(--shadow);max-width:calc(100% - 28px);animation:tin .35s}
+#update button{background:rgba(255,255,255,.22);padding:8px 14px;border-radius:12px;font-weight:700}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (min-width:900px){
+  .finder{width:340px}
+  #tabbar{width:380px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+  SVG 圖示庫（Lucide 風格：24×24、線寬 1.8、圓角端點）
+============================================================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+  <symbol id="i-zap-off" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/><path d="M3 3l18 18"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></symbol>
+  <symbol id="i-barcode" viewBox="0 0 24 24"><path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/><path d="M17 5v14"/><path d="M21 5v14"/></symbol>
+  <symbol id="i-app" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="4"/><path d="M9 9h6v6H9z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-camera-off" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><path d="M3 3l18 18"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-phone-app" viewBox="0 0 24 24"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+  <symbol id="i-vibrate" viewBox="0 0 24 24"><path d="m2 8 2 2-2 2 2 2-2 2"/><path d="m22 8-2 2 2 2-2 2 2 2"/><path d="M8 8v8a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-plus-square" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+</svg>
+
+<div id="app">
+
+  <!-- ===================== 掃描頁 ===================== -->
+  <section id="view-scan" class="view active" aria-label="掃描">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="hit"></canvas>
+    <div class="mask"><div class="finder" id="finder" aria-hidden="true">
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i><span class="line"></span>
+    </div></div>
+
+    <div class="status" id="status" role="status" aria-live="polite">相機準備中…</div>
+
+    <div class="controls">
+      <label class="zoom" id="zoomBox" hidden>
+        <svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg>
+        <input type="range" id="zoom" min="1" max="1" step="0.1" value="1" aria-label="縮放">
+        <span id="zoomVal">1×</span>
+      </label>
+      <div class="ctl-row">
+        <button class="fab" id="btnGallery" aria-label="從相簿選擇圖片"><svg class="ic"><use href="#i-image"/></svg></button>
+        <button class="fab" id="btnTorch" aria-label="手電筒" hidden><svg class="ic"><use href="#i-zap"/></svg></button>
+        <button class="fab" id="btnFlip" aria-label="切換前後鏡頭"><svg class="ic"><use href="#i-flip"/></svg></button>
+      </div>
+    </div>
+
+    <div class="cam-card" id="camCard">
+      <div class="inner">
+        <div class="badge"><svg class="ic xl" id="camIcon"><use href="#i-camera"/></svg></div>
+        <h2 id="camTitle">開啟相機開始掃描</h2>
+        <p id="camDesc">Scanly 只會在你的裝置上解碼，影像不會上傳到任何伺服器。</p>
+        <button class="btn primary block" id="btnStart"><svg class="ic sm"><use href="#i-camera"/></svg><span id="btnStartTxt">開啟相機</span></button>
+        <button class="btn ghost block" id="btnGallery2"><svg class="ic sm"><use href="#i-image"/></svg>從相簿選擇圖片</button>
+      </div>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </section>
+
+  <!-- ===================== 紀錄頁 ===================== -->
+  <section id="view-history" class="view" aria-label="紀錄">
+    <div class="scroll"><div class="page">
+      <div class="page-title"><span>掃描紀錄</span></div>
+      <label class="search"><svg class="ic sm"><use href="#i-search"/></svg>
+        <input type="search" id="q" placeholder="搜尋內容" aria-label="搜尋紀錄" autocomplete="off"></label>
+      <div class="chips">
+        <button class="chip" id="fAll" aria-pressed="true">全部</button>
+        <button class="chip" id="fFav" aria-pressed="false">收藏</button>
+        <span class="grow"></span>
+        <button class="icon-btn" id="btnExport" aria-label="匯出 CSV"><svg class="ic sm"><use href="#i-download"/></svg></button>
+        <button class="icon-btn" id="btnClear" aria-label="清除全部紀錄"><svg class="ic sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <div class="card" id="histList"></div>
+      <div class="empty" id="histEmpty" hidden>
+        <div class="badge"><svg class="ic xl"><use href="#i-history"/></svg></div>
+        <b id="emptyTitle">還沒有紀錄</b><span id="emptyDesc">掃描過的內容會顯示在這裡，並只儲存在這台裝置。</span>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ===================== 設定頁 ===================== -->
+  <section id="view-settings" class="view" aria-label="設定">
+    <div class="scroll"><div class="page">
+      <div class="page-title"><span>設定</span></div>
+
+      <div class="group-label">掃描</div>
+      <div class="card">
+        <label class="row"><span class="ri"><svg class="ic sm"><use href="#i-volume"/></svg></span>
+          <span class="rt"><b>提示音</b><small>成功辨識時播放短音</small></span>
+          <span class="switch"><input type="checkbox" data-setting="sound"><i></i></span></label>
+        <label class="row"><span class="ri"><svg class="ic sm"><use href="#i-vibrate"/></svg></span>
+          <span class="rt"><b>震動回饋</b><small>僅支援 Android 等有震動馬達的裝置</small></span>
+          <span class="switch"><input type="checkbox" data-setting="vibrate"><i></i></span></label>
+        <label class="row"><span class="ri"><svg class="ic sm"><use href="#i-repeat"/></svg></span>
+          <span class="rt"><b>連續掃描</b><small>辨識後不跳出面板，持續掃描下一個</small></span>
+          <span class="switch"><input type="checkbox" data-setting="continuous"><i></i></span></label>
+      </div>
+
+      <div class="group-label">隱私與外觀</div>
+      <div class="card">
+        <label class="row"><span class="ri"><svg class="ic sm"><use href="#i-database"/></svg></span>
+          <span class="rt"><b>儲存掃描紀錄</b><small>只存在本機，不會同步或上傳</small></span>
+          <span class="switch"><input type="checkbox" data-setting="saveHistory"><i></i></span></label>
+        <div class="row"><span class="ri"><svg class="ic sm"><use href="#i-moon"/></svg></span>
+          <span class="rt"><b>外觀</b></span>
+          <div class="seg" id="themeSeg" role="group" aria-label="外觀主題">
+            <button data-theme="auto" aria-pressed="true">自動</button>
+            <button data-theme="light" aria-pressed="false">淺色</button>
+            <button data-theme="dark" aria-pressed="false">深色</button>
+          </div></div>
+      </div>
+
+      <div class="group-label">App</div>
+      <div class="card">
+        <button class="row" id="btnInstall"><span class="ri"><svg class="ic sm"><use href="#i-phone-app"/></svg></span>
+          <span class="rt"><b>安裝 APP</b><small id="installHint">加入主畫面，像原生 App 一樣使用</small></span>
+          <svg class="ic sm chev"><use href="#i-chevron"/></svg></button>
+        <button class="row" id="btnUpdate"><span class="ri"><svg class="ic sm"><use href="#i-refresh"/></svg></span>
+          <span class="rt"><b>檢查更新</b><small id="verText">版本 —</small></span>
+          <svg class="ic sm chev"><use href="#i-chevron"/></svg></button>
+        <button class="row" id="btnWipe"><span class="ri" style="background:rgba(255,107,107,.14);color:var(--danger)"><svg class="ic sm"><use href="#i-trash"/></svg></span>
+          <span class="rt"><b style="color:var(--danger)">清除所有資料</b><small>刪除紀錄與設定並還原預設</small></span></button>
+      </div>
+
+      <div class="group-label">關於</div>
+      <div class="card">
+        <div class="row"><span class="ri"><svg class="ic sm"><use href="#i-shield"/></svg></span>
+          <span class="rt"><b>完全本機運算</b><small>相機影像只在你的裝置上處理，Scanly 不會收集或上傳任何掃描內容。離線也能使用。</small></span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ===================== 底部分頁列 ===================== -->
+  <nav id="tabbar" role="tablist" aria-label="主要導覽">
+    <button class="tab" role="tab" data-tab="scan" aria-selected="true"><svg class="ic"><use href="#i-scan"/></svg>掃描</button>
+    <button class="tab" role="tab" data-tab="history" aria-selected="false"><svg class="ic"><use href="#i-history"/></svg>紀錄</button>
+    <button class="tab" role="tab" data-tab="settings" aria-selected="false"><svg class="ic"><use href="#i-settings"/></svg>設定</button>
+  </nav>
+</div>
+
+<!-- 結果面板 -->
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="掃描結果">
+  <div class="grab" id="grab"><i></i></div>
+  <div class="body" id="sheetBody"></div>
+</div>
+<!-- 通用對話框 -->
+<div class="dialog" id="dialog" role="alertdialog" aria-modal="true"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="update" hidden>
+  <span>有新版本可用．立即更新</span><button id="btnDoUpdate">更新</button>
+</div>
+
+<!-- 離線備援解碼器（本機檔案，不依賴外部 CDN） -->
+<script src="jsQR.js" defer></script>
+
+<script>
+'use strict';
+/* ============================================================
+   Scanly 主程式
+   區段：0 工具 → 1 設定 → 2 UI 元件 → 3 內容解析 → 4 歷史紀錄
+        → 5 結果面板 → 6 相機與解碼 → 7 分頁導覽 → 8 設定頁
+        → 9 PWA（Service Worker、安裝、更新）→ 10 啟動
+============================================================ */
+const APP_VERSION = '1.0.0';            // 顯示用版本；快取版本請看 sw.js 的 VERSION
+const NS = 'http://www.w3.org/2000/svg';
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+/* ---------- 0. 工具函式 ---------- */
+// 安全的 localStorage（隱私模式或被封鎖時不會丟例外）
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  del(k)    { try { localStorage.removeItem(k); } catch (e) {} }
+};
+
+// 以 DOM API 建立元素（一律用 textContent，避免 XSS）
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) { if (c == null || c === false) continue; e.append(c.nodeType ? c : document.createTextNode(c)); }
+  return e;
+}
+function icon(name, cls = '') {
+  const s = document.createElementNS(NS, 'svg'); s.setAttribute('class', 'ic ' + cls); s.setAttribute('aria-hidden', 'true');
+  const u = document.createElementNS(NS, 'use'); u.setAttribute('href', '#i-' + name); s.append(u); return s;
+}
+function setIcon(svg, name) { svg.querySelector('use').setAttribute('href', '#i-' + name); }
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+    throw new Error('no clipboard');
+  } catch (e) {
+    try { // 舊瀏覽器備援
+      const ta = h('textarea', { style: 'position:fixed;opacity:0;top:0' }); ta.value = text;
+      document.body.append(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok;
+    } catch (e2) { return false; }
+  }
+}
+function fmtTime(ts) {
+  const d = new Date(ts), diff = Date.now() - ts, m = Math.floor(diff / 60000);
+  if (m < 1) return '剛剛';
+  if (m < 60) return m + ' 分鐘前';
+  if (m < 60 * 24 && new Date().toDateString() === d.toDateString()) return Math.floor(m / 60) + ' 小時前';
+  const y = new Date(Date.now() - 864e5);
+  const hm = d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (y.toDateString() === d.toDateString()) return '昨天 ' + hm;
+  return d.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) + ' ' + hm;
+}
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob), a = h('a', { href: url, download: name });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// 全域錯誤攔截：避免白屏，並給使用者友善提示
+window.addEventListener('error', e => { console.error(e.error || e.message); });
+window.addEventListener('unhandledrejection', e => { console.error(e.reason); });
+
+/* ---------- 1. 設定 ---------- */
+const DEFAULTS = { theme: 'auto', sound: true, vibrate: true, continuous: false, saveHistory: true };
+let settings = Object.assign({}, DEFAULTS, store.get('scanly.settings', {}));
+function saveSettings() { store.set('scanly.settings', settings); }
+function applyTheme() {
+  const r = document.documentElement;
+  if (settings.theme === 'auto') r.removeAttribute('data-theme'); else r.dataset.theme = settings.theme;
+  updateThemeColor();
+}
+function effectiveDark() {
+  return settings.theme === 'dark' || (settings.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function updateThemeColor() {
+  // 掃描頁固定深色；其他頁依主題
+  const dark = currentTab === 'scan' || effectiveDark();
+  const m = $('meta[name="theme-color"]'); if (m) m.content = currentTab === 'scan' ? '#000000' : (dark ? '#0A0C10' : '#F3F5F9');
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', updateThemeColor);
+
+/* ---------- 2. UI 元件：Toast / 對話框 / 面板 ---------- */
+function toast(msg, { action, onAction, duration = 2600 } = {}) {
+  const t = h('div', { class: 'toast', role: 'status' }, h('span', { text: msg }));
+  if (action) t.append(h('button', { text: action, onclick: () => { onAction && onAction(); close(); } }));
+  $('#toasts').append(t);
+  const close = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+  setTimeout(close, duration);
+}
+
+function confirmDialog({ title, msg, ok = '確定', danger = false }) {
+  return new Promise(res => {
+    const d = $('#dialog'), bd = $('#backdrop');
+    const done = v => { d.classList.remove('open'); if (!sheetOpen) bd.classList.remove('open'); res(v); };
+    d.replaceChildren(h('h3', { text: title }), h('p', { text: msg }),
+      h('div', { class: 'mini-row' },
+        h('button', { class: 'btn', text: '取消', onclick: () => done(false) }),
+        h('button', { class: 'btn primary' + (danger ? ' danger' : ''), text: ok, onclick: () => done(true) })));
+    if (danger) d.lastChild.lastChild.style.cssText = 'background:var(--danger);color:#fff';
+    bd.classList.add('open'); d.classList.add('open');
+    bd.onclick = () => done(false);
+  });
+}
+
+let sheetOpen = false, sheetOnClose = null;
+function openSheet(nodes, onClose) {
+  const s = $('#sheet'); $('#sheetBody').replaceChildren(...nodes);
+  sheetOnClose = onClose || null; sheetOpen = true;
+  $('#backdrop').classList.add('open'); s.classList.add('open'); s.style.transform = '';
+  $('#backdrop').onclick = closeSheet;
+}
+function closeSheet() {
+  if (!sheetOpen) return; sheetOpen = false;
+  $('#sheet').classList.remove('open'); $('#sheet').style.transform = '';
+  $('#backdrop').classList.remove('open');
+  const cb = sheetOnClose; sheetOnClose = null; cb && cb();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+// 下滑關閉面板
+(() => {
+  const g = $('#grab'), s = $('#sheet'); let y0 = null, dy = 0;
+  g.addEventListener('pointerdown', e => { y0 = e.clientY; dy = 0; s.style.transition = 'none'; g.setPointerCapture(e.pointerId); });
+  g.addEventListener('pointermove', e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); s.style.transform = `translate(-50%,${dy}px)`; });
+  const end = () => { if (y0 == null) return; y0 = null; s.style.transition = ''; dy > 90 ? closeSheet() : (s.style.transform = ''); };
+  g.addEventListener('pointerup', end); g.addEventListener('pointercancel', end);
+})();
+
+/* ---------- 3. 內容解析（智慧辨識類型） ---------- */
+function parseWifi(s) {              // WIFI:T:WPA;S:名稱;P:密碼;H:false;;
+  const out = {}; let key = '', val = '', inKey = true, esc = false;
+  for (const ch of s.slice(5)) {
+    if (esc) { val += ch; esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (inKey) { if (ch === ':') inKey = false; else if (ch !== ';') key += ch; continue; }
+    if (ch === ';') { out[key] = val; key = ''; val = ''; inKey = true; continue; }
+    val += ch;
+  }
+  if (key) out[key] = val; return out;
+}
+function parseVCard(s) {
+  const lines = s.replace(/\r?\n[ \t]/g, '').split(/\r?\n/), o = { tel: [], email: [] };
+  for (const ln of lines) {
+    const i = ln.indexOf(':'); if (i < 0) continue;
+    const k = ln.slice(0, i).split(';')[0].toUpperCase(), v = ln.slice(i + 1).trim();
+    if (k === 'FN') o.name = v; else if (k === 'N' && !o.name) o.name = v.split(';').filter(Boolean).reverse().join(' ');
+    else if (k === 'TEL') o.tel.push(v); else if (k === 'EMAIL') o.email.push(v);
+    else if (k === 'ORG') o.org = v.replace(/;/g, ' '); else if (k === 'URL') o.url = v; else if (k === 'TITLE') o.title = v;
+  }
+  return o;
+}
+const FMT_NAME = { qr_code: 'QR Code', ean_13: 'EAN-13', ean_8: 'EAN-8', upc_a: 'UPC-A', upc_e: 'UPC-E', code_128: 'Code 128',
+  code_39: 'Code 39', code_93: 'Code 93', codabar: 'Codabar', itf: 'ITF', data_matrix: 'Data Matrix', pdf417: 'PDF417', aztec: 'Aztec' };
+
+/** 回傳 { type, label, icon, title, fields[], warns[], actions[] }；actions 的 href 僅限安全協定 */
+function analyze(text, fmt) {
+  const t = String(text).trim();
+  const r = { type: 'text', label: '文字', icon: 'type', title: t.replace(/\s+/g, ' ').slice(0, 90) || '(空白)', fields: [], warns: [], actions: [] };
+  const fmtLabel = FMT_NAME[fmt] || (fmt ? fmt : 'QR Code');
+  const add = (k, v, extra) => v && r.fields.push(Object.assign({ k, v }, extra));
+  let m;
+
+  if (/^(javascript|data|vbscript|file|blob):/i.test(t)) {
+    r.type = 'unsafe'; r.label = '可疑內容'; r.icon = 'alert';
+    r.warns.push('此內容含有程式碼或本機資源協定，Scanly 不會自動執行。請勿在不信任的來源貼上或執行。');
+  } else if (/^WIFI:/i.test(t)) {
+    const w = parseWifi(t); r.type = 'wifi'; r.label = 'Wi‑Fi 網路'; r.icon = 'wifi'; r.title = 'Wi‑Fi：' + (w.S || '未命名');
+    add('網路名稱', w.S); add('加密', w.T && w.T !== 'nopass' ? w.T : '無（開放網路）');
+    if (w.P) add('密碼', w.P, { secret: true }); if (/^true$/i.test(w.H)) add('隱藏網路', '是');
+    if (w.P) r.actions.push({ label: '複製密碼', icon: 'copy', primary: true, run: () => copyText(w.P).then(ok => toast(ok ? '已複製密碼' : '複製失敗')) });
+    if (w.S) r.actions.push({ label: '複製網路名稱', icon: 'wifi', run: () => copyText(w.S).then(ok => toast(ok ? '已複製名稱' : '複製失敗')) });
+    r.warns.push('網頁 App 無法直接連上 Wi‑Fi。請複製密碼後，到系統的 Wi‑Fi 設定選擇此網路並貼上。');
+  } else if (/^BEGIN:VCARD/i.test(t)) {
+    const c = parseVCard(t); r.type = 'contact'; r.label = '聯絡人'; r.icon = 'user'; r.title = c.name || '聯絡人名片';
+    add('姓名', c.name); add('公司', c.org); add('職稱', c.title); c.tel.forEach(x => add('電話', x)); c.email.forEach(x => add('Email', x)); add('網址', c.url);
+    r.actions.push({ label: '加入聯絡人', icon: 'user', primary: true,
+      run: () => { downloadBlob(new Blob([t], { type: 'text/vcard' }), (c.name || 'contact') + '.vcf'); toast('已下載名片檔，請以通訊錄開啟'); } });
+  } else if ((m = t.match(/^mailto:([^?]*)(\?.*)?$/i)) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) {
+    const addr = m ? decodeURIComponent(m[1]) : t; let subj = '';
+    try { subj = new URLSearchParams((m && m[2]) || '').get('subject') || ''; } catch (e) {}
+    r.type = 'email'; r.label = '電子郵件'; r.icon = 'mail'; r.title = addr; add('收件人', addr); add('主旨', subj);
+    r.actions.push({ label: '撰寫郵件', icon: 'mail', primary: true, href: m ? t : 'mailto:' + t });
+  } else if ((m = t.match(/^tel:(.+)$/i))) {
+    r.type = 'phone'; r.label = '電話'; r.icon = 'phone'; r.title = m[1]; add('號碼', m[1]);
+    r.actions.push({ label: '撥打電話', icon: 'phone', primary: true, href: 'tel:' + m[1].replace(/[^\d+*#,;]/g, '') });
+  } else if ((m = t.match(/^(?:sms|smsto):([^:?]*)[:?](?:body=)?(.*)$/i)) || /^(?:sms|smsto):[^:?]+$/i.test(t)) {
+    const num = m ? m[1] : t.split(':')[1], body = m ? decodeURIComponent(m[2] || '') : '';
+    r.type = 'sms'; r.label = '簡訊'; r.icon = 'message'; r.title = num; add('號碼', num); add('內容', body);
+    r.actions.push({ label: '傳送簡訊', icon: 'message', primary: true, href: 'sms:' + num.replace(/[^\d+]/g, '') + (body ? '?body=' + encodeURIComponent(body) : '') });
+  } else if ((m = t.match(/^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i))) {
+    r.type = 'geo'; r.label = '地理位置'; r.icon = 'pin'; r.title = m[1] + ', ' + m[2]; add('緯度', m[1]); add('經度', m[2]);
+    r.actions.push({ label: '在地圖開啟', icon: 'pin', primary: true, href: 'https://www.google.com/maps?q=' + m[1] + ',' + m[2], external: true });
+  } else {
+    let u = null; const cand = /^www\.[^\s]+\.[a-z]{2,}/i.test(t) ? 'https://' + t : t;
+    try { u = new URL(cand); } catch (e) {}
+    if (u && /^https?:$/.test(u.protocol) && !/\s/.test(t)) {
+      r.type = 'url'; r.label = '網站連結'; r.icon = 'link';
+      r.title = u.hostname.replace(/^www\./, '') + (u.pathname !== '/' ? u.pathname : ''); add('網域', u.hostname);
+      if (u.protocol === 'http:') r.warns.push('此連結未使用加密連線（HTTP），請避免輸入密碼或個資。');
+      if (/(^|\.)xn--/i.test(u.hostname)) r.warns.push('網域含國際化字元，可能是仿冒網址，開啟前請再確認。');
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) r.warns.push('這是以 IP 位址為主的連結，請確認來源可信。');
+      if (u.username || u.password) r.warns.push('網址中含有帳號資訊，這是常見的詐騙手法。');
+      r.actions.push({ label: '開啟連結', icon: 'external', primary: true, href: u.href, external: true });
+    } else if (u && /^[a-z][a-z0-9+.-]*:$/i.test(u.protocol) && /^[a-z][a-z0-9+.-]*:\/\//i.test(t)) {
+      r.type = 'app'; r.label = '應用程式連結'; r.icon = 'app'; add('協定', u.protocol.replace(':', ''));
+      r.warns.push('這個連結會交給其他 App 處理，Scanly 不會自動開啟。請確認來源可信後再手動使用。');
+    } else if (/^\d{8,14}$/.test(t) && fmt && fmt !== 'qr_code') {
+      r.type = 'product'; r.label = '商品條碼'; r.icon = 'barcode'; r.title = t;
+      r.actions.push({ label: '上網搜尋此條碼', icon: 'search', primary: true, href: 'https://www.google.com/search?q=' + encodeURIComponent(t), external: true });
+    } else if (fmt && fmt !== 'qr_code') { r.type = 'barcode'; r.label = '條碼'; r.icon = 'barcode'; }
+  }
+  r.fields.push({ k: '格式', v: fmtLabel });
+  return r;
+}
+
+/* ---------- 4. 歷史紀錄 ---------- */
+let history = store.get('scanly.history', []);
+if (!Array.isArray(history)) history = [];
+function saveHistory() { if (!store.set('scanly.history', history)) toast('儲存空間不足，紀錄可能無法保存'); }
+function addRecord(text, fmt) {
+  const now = Date.now(); let rec = history.find(x => x.text === text);
+  if (rec) { rec.ts = now; rec.fmt = fmt || rec.fmt; history = [rec, ...history.filter(x => x !== rec)]; }
+  else { rec = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), text, fmt: fmt || 'qr_code', ts: now, fav: false }; history.unshift(rec); }
+  if (history.length > 500) history.length = 500;
+  if (settings.saveHistory) saveHistory();
+  return rec;
+}
+let filterFav = false, query = '';
+function renderHistory() {
+  const list = $('#histList'), q = query.trim().toLowerCase();
+  const items = history.filter(x => (!filterFav || x.fav) && (!q || x.text.toLowerCase().includes(q)));
+  list.replaceChildren(); $('#histEmpty').hidden = items.length > 0; list.hidden = items.length === 0;
+  if (!items.length) {
+    $('#emptyTitle').textContent = history.length ? '找不到符合的紀錄' : '還沒有紀錄';
+    $('#emptyDesc').textContent = history.length ? '換個關鍵字，或切換回「全部」。' : '掃描過的內容會顯示在這裡，並只儲存在這台裝置。';
+  }
+  for (const rec of items) {
+    const a = analyze(rec.text, rec.fmt);
+    list.append(h('button', { class: 'row hist-item', onclick: () => showResult(rec, { fromHistory: true }) },
+      h('span', { class: 'ri' }, icon(a.icon, 'sm')),
+      h('span', { class: 'rt' }, h('b', { text: a.title, style: 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }), h('small', { text: a.label + ' · ' + fmtTime(rec.ts) })),
+      rec.fav ? h('span', { class: 'star' }, icon('star', 'sm')) : null));
+  }
+}
+$('#q').addEventListener('input', e => { query = e.target.value; renderHistory(); });
+$('#fAll').onclick = () => { filterFav = false; $('#fAll').setAttribute('aria-pressed', 'true'); $('#fFav').setAttribute('aria-pressed', 'false'); renderHistory(); };
+$('#fFav').onclick = () => { filterFav = true; $('#fAll').setAttribute('aria-pressed', 'false'); $('#fFav').setAttribute('aria-pressed', 'true'); renderHistory(); };
+$('#btnClear').onclick = async () => {
+  if (!history.length) return toast('目前沒有紀錄');
+  if (await confirmDialog({ title: '清除全部紀錄？', msg: '這會刪除所有掃描紀錄（包含收藏），且無法復原。', ok: '全部清除', danger: true })) { history = []; saveHistory(); renderHistory(); toast('已清除紀錄'); }
+};
+$('#btnExport').onclick = async () => {
+  if (!history.length) return toast('沒有可匯出的紀錄');
+  try {
+    const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
+    const csv = '﻿時間,類型,格式,收藏,內容\n' + history.map(x => {
+      const a = analyze(x.text, x.fmt); return [new Date(x.ts).toLocaleString('zh-TW', { hour12: false }), a.label, FMT_NAME[x.fmt] || x.fmt, x.fav ? '是' : '', x.text].map(esc).join(',');
+    }).join('\n');
+    const file = new File([csv], 'scanly-history.csv', { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Scanly 掃描紀錄' }); }
+    else downloadBlob(file, 'scanly-history.csv');
+  } catch (e) { if (e.name !== 'AbortError') { console.error(e); toast('匯出失敗'); } }
+};
+
+/* ---------- 5. 結果面板 ---------- */
+function showResult(rec, { fromHistory = false, onClose } = {}) {
+  const a = analyze(rec.text, rec.fmt), nodes = [];
+  nodes.push(h('div', { class: 'res-head' }, h('span', { class: 'ri' }, icon(a.icon, 'lg')),
+    h('div', {}, h('b', { text: a.label }), h('small', { text: fmtTime(rec.ts) }))));
+  a.warns.forEach(w => nodes.push(h('div', { class: 'warn', role: 'alert' }, icon('alert', 'sm'), h('span', { text: w }))));
+  nodes.push(h('div', { class: 'content-box', text: rec.text, tabindex: '0' }));
+  if (a.fields.length > 1 || (a.fields.length === 1 && a.type !== 'text')) {
+    const box = h('div', { class: 'fields' });
+    for (const f of a.fields) {
+      const b = h('b', { text: f.secret ? '••••••••' : f.v });
+      const row = h('div', { class: 'field' }, h('span', { text: f.k }), b);
+      if (f.secret) { let shown = false; row.append(h('button', { text: '顯示', onclick: ev => { shown = !shown; b.textContent = shown ? f.v : '••••••••'; ev.target.textContent = shown ? '隱藏' : '顯示'; } })); }
+      box.append(row);
+    }
+    nodes.push(box);
+  }
+  const acts = h('div', { class: 'actions' });
+  const mkBtn = (act, cls) => act.href
+    ? h('a', { class: 'btn ' + cls, href: act.href, target: act.external ? '_blank' : null, rel: act.external ? 'noopener noreferrer' : null }, icon(act.icon, 'sm'), act.label)
+    : h('button', { class: 'btn ' + cls, onclick: act.run }, icon(act.icon, 'sm'), act.label);
+  a.actions.filter(x => x.primary).forEach(x => acts.append(mkBtn(x, 'primary block')));
+  const mini = h('div', { class: 'mini-row' });
+  a.actions.filter(x => !x.primary).forEach(x => mini.append(mkBtn(x, '')));
+  mini.append(h('button', { class: 'btn', onclick: () => copyText(rec.text).then(ok => toast(ok ? '已複製內容' : '複製失敗')) }, icon('copy', 'sm'), '複製'));
+  if (navigator.share) mini.append(h('button', { class: 'btn', onclick: () => navigator.share({ text: rec.text }).catch(() => {}) }, icon('share', 'sm'), '分享'));
+  acts.append(mini);
+  const inHist = history.includes(rec);
+  const mini2 = h('div', { class: 'mini-row' });
+  if (inHist) {
+    const favBtn = h('button', { class: 'btn' }, icon('star', 'sm'), rec.fav ? '取消收藏' : '收藏');
+    favBtn.onclick = () => { rec.fav = !rec.fav; saveHistory(); favBtn.lastChild.textContent = rec.fav ? '取消收藏' : '收藏'; renderHistory(); toast(rec.fav ? '已加入收藏' : '已取消收藏'); };
+    mini2.append(favBtn);
+    mini2.append(h('button', { class: 'btn danger', onclick: () => { history = history.filter(x => x !== rec); saveHistory(); renderHistory(); closeSheet(); toast('已刪除'); } }, icon('trash', 'sm'), '刪除'));
+  }
+  mini2.append(h('button', { class: 'btn', onclick: closeSheet }, icon('x', 'sm'), '關閉'));
+  acts.append(mini2); nodes.push(acts);
+  openSheet(nodes, onClose);
+}
+
+/* ---------- 6. 相機與解碼 ---------- */
+const video = $('#video'), hit = $('#hit');
+const cam = { stream: null, track: null, facing: 'environment', torch: false, running: false, paused: false,
+  raf: 0, last: 0, busy: false, detector: null, native: false, lastText: '', lastAt: 0, frames: 0, wanted: false };
+const cvs = document.createElement('canvas'), cctx = cvs.getContext('2d', { willReadFrequently: true });
+
+function setStatus(t) { $('#status').textContent = t; $('#view-scan').classList.toggle('scanning-off', !cam.running || cam.paused); }
+function showCamCard(show, { title, desc, btn, icn } = {}) {
+  $('#camCard').hidden = !show; if (!show) return;
+  if (title) $('#camTitle').textContent = title; if (desc) $('#camDesc').textContent = desc;
+  if (btn) $('#btnStartTxt').textContent = btn; if (icn) setIcon($('#camIcon'), icn);
+}
+function camError(e) {
+  console.warn('camera error', e);
+  const n = e && e.name; let title = '無法開啟相機', desc = '請確認沒有其他 App 正在使用相機，然後再試一次。', icn = 'camera-off';
+  if (n === 'NotAllowedError' || n === 'SecurityError') desc = '相機權限被拒絕。請到瀏覽器或系統設定允許此網站使用相機，再按「重試」。你也可以改從相簿選擇圖片。';
+  else if (n === 'NotFoundError' || n === 'OverconstrainedError') desc = '找不到可用的相機。你仍可以從相簿選擇含有 QR Code 的圖片。';
+  else if (n === 'NotReadableError') desc = '相機目前被其他程式占用，請關閉後再重試。';
+  else if (e && e.message === 'insecure') desc = '相機只能在 HTTPS 或 localhost 下使用。請改用 https:// 網址開啟。';
+  else if (e && e.message === 'unsupported') desc = '這個瀏覽器不支援相機存取。請改用最新版 Safari、Chrome 或 Edge。';
+  cam.running = false; showCamCard(true, { title, desc, btn: '重試', icn }); setStatus('相機未啟動');
+}
+
+async function startCamera() {
+  cam.wanted = true;
+  try {
+    if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(location.hostname)) throw new Error('insecure');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('unsupported');
+    stopCamera(true); setStatus('相機啟動中…');
+    ensureAudio();                       // 在使用者手勢內解鎖音訊
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: cam.facing }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    cam.stream = stream; cam.track = stream.getVideoTracks()[0];
+    video.srcObject = stream; video.classList.toggle('mirror', cam.facing === 'user');
+    await video.play();
+    store.set('scanly.camOK', true);
+    await setupCaps(); await initDetector();
+    cam.running = true; cam.paused = false; showCamCard(false); setStatus('將 QR Code 對準框內');
+    cancelAnimationFrame(cam.raf); cam.raf = requestAnimationFrame(loop);
+  } catch (e) { camError(e); }
+}
+function stopCamera(keepWanted) {
+  if (!keepWanted) cam.wanted = false;
+  cancelAnimationFrame(cam.raf); cam.running = false;
+  if (cam.stream) cam.stream.getTracks().forEach(t => t.stop());
+  cam.stream = null; cam.track = null; cam.torch = false; video.srcObject = null;
+  $('#btnTorch').classList.remove('on');
+}
+async function setupCaps() {            // 手電筒 / 縮放 / 連續對焦（不支援就隱藏，不會報錯）
+  const caps = (cam.track && cam.track.getCapabilities && cam.track.getCapabilities()) || {};
+  $('#btnTorch').hidden = !caps.torch; setIcon($('#btnTorch svg'), 'zap');
+  const z = caps.zoom, zb = $('#zoomBox');
+  if (z && z.max > z.min) { const el = $('#zoom'); el.min = z.min; el.max = Math.min(z.max, z.min * 6); el.step = z.step || 0.1; el.value = z.min; $('#zoomVal').textContent = (+z.min).toFixed(1) + '×'; zb.hidden = false; }
+  else zb.hidden = true;
+  try { if (caps.focusMode && caps.focusMode.includes('continuous')) await cam.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+}
+$('#zoom').addEventListener('input', async e => {
+  try { await cam.track.applyConstraints({ advanced: [{ zoom: +e.target.value }] }); $('#zoomVal').textContent = (+e.target.value).toFixed(1) + '×'; } catch (err) {}
+});
+$('#btnTorch').onclick = async () => {
+  try { cam.torch = !cam.torch; await cam.track.applyConstraints({ advanced: [{ torch: cam.torch }] });
+    $('#btnTorch').classList.toggle('on', cam.torch); }
+  catch (e) { cam.torch = false; toast('此裝置無法開啟手電筒'); }
+};
+$('#btnFlip').onclick = () => { cam.facing = cam.facing === 'environment' ? 'user' : 'environment'; startCamera(); };
+$('#btnStart').onclick = startCamera;
+
+async function initDetector() {
+  if (cam.detector || cam.native === false && cam.detectorTried) return; cam.detectorTried = true;
+  if ('BarcodeDetector' in window) {
+    try {
+      const sup = await BarcodeDetector.getSupportedFormats();
+      const want = ['qr_code', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'codabar', 'itf', 'data_matrix', 'pdf417', 'aztec'].filter(f => sup.includes(f));
+      if (want.length) { cam.detector = new BarcodeDetector({ formats: want }); cam.native = true; return; }
+    } catch (e) { console.warn('BarcodeDetector 不可用，改用 jsQR', e); }
+  }
+  cam.native = false;
+}
+
+function loop(ts) {
+  if (!cam.running) return; cam.raf = requestAnimationFrame(loop);
+  if (cam.paused || cam.busy || ts - cam.last < 90 || video.readyState < 2) return;
+  cam.last = ts; cam.busy = true;
+  scanFrame().catch(e => console.warn(e)).finally(() => { cam.busy = false; });
+}
+async function scanFrame() {
+  const found = await decodeSource(video, video.videoWidth, video.videoHeight, cam.frames++ % 3 === 2, false);
+  if (found) handleCode(found, true);
+}
+/** 解碼影像來源：優先原生 BarcodeDetector，其次 jsQR。回傳 {text, fmt, points[]} 或 null */
+async function decodeSource(src, w, h2, both, fallback = true) {
+  if (cam.native && cam.detector) {
+    try {
+      const r = await cam.detector.detect(src);
+      if (r.length) return { text: r[0].rawValue, fmt: r[0].format, points: (r[0].cornerPoints || []).map(p => [p.x, p.y]) };
+      if (!fallback) return null;      // 即時掃描：原生偵測器沒結果就等下一幀，不重複耗 CPU
+    } catch (e) { console.warn('detect 失敗，改用 jsQR', e); cam.native = false; }
+  }
+  if (!window.jsQR || !w || !h2) return null;
+  const sc = Math.min(1, 720 / Math.max(w, h2)); cvs.width = Math.round(w * sc); cvs.height = Math.round(h2 * sc);
+  cctx.drawImage(src, 0, 0, cvs.width, cvs.height);
+  const img = cctx.getImageData(0, 0, cvs.width, cvs.height);
+  const r = jsQR(img.data, img.width, img.height, { inversionAttempts: both ? 'attemptBoth' : 'dontInvert' });
+  if (!r || !r.data) return null;
+  const L = r.location, pts = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner].map(p => [p.x / sc, p.y / sc]);
+  return { text: r.data, fmt: 'qr_code', points: pts };
+}
+
+// 在畫面上用強調色框出偵測到的碼
+let hitTimer = 0;
+function drawHit(points) {
+  const dpr = devicePixelRatio || 1, r = hit.getBoundingClientRect();
+  hit.width = r.width * dpr; hit.height = r.height * dpr;
+  const c = hit.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+  if (!points || points.length < 3 || !video.videoWidth) return;
+  const s = Math.max(r.width / video.videoWidth, r.height / video.videoHeight);
+  const ox = (r.width - video.videoWidth * s) / 2, oy = (r.height - video.videoHeight * s) / 2;
+  const P = points.map(([x, y]) => { let X = x * s + ox; if (cam.facing === 'user') X = r.width - X; return [X, y * s + oy]; });
+  c.lineWidth = 4; c.lineJoin = 'round'; c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4C8DFF';
+  c.shadowColor = c.strokeStyle; c.shadowBlur = 18; c.beginPath(); P.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.stroke();
+  clearTimeout(hitTimer); hitTimer = setTimeout(() => c.clearRect(0, 0, r.width, r.height), 700);
+}
+
+// 提示音與震動
+let actx = null;
+function ensureAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+function feedback() {
+  if (settings.vibrate && navigator.vibrate) { try { navigator.vibrate(35); } catch (e) {} }
+  if (!settings.sound) return;
+  try {
+    ensureAudio(); if (!actx) return; const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = 'sine'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.22, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.18);
+  } catch (e) {}
+}
+
+function handleCode(code, live) {
+  const now = Date.now();
+  if (live && code.text === cam.lastText && now - cam.lastAt < 2500) { cam.lastAt = now; return; }   // 同一個碼 2.5 秒內不重複觸發
+  cam.lastText = code.text; cam.lastAt = now;
+  feedback(); if (live) drawHit(code.points);
+  const rec = addRecord(code.text, code.fmt); renderHistory();
+  if (live && settings.continuous) {
+    const a = analyze(rec.text, rec.fmt); toast(a.label + '：' + a.title, { action: '查看', onAction: () => showResult(rec), duration: 3200 });
+    return;
+  }
+  if (live) { cam.paused = true; setStatus('已辨識'); }
+  setTimeout(() => showResult(rec, { onClose: () => { if (cam.running) { cam.paused = false; cam.lastAt = Date.now(); setStatus('將 QR Code 對準框內'); } } }), live ? 260 : 0);
+}
+
+// 相簿 / 檔案選擇解碼
+$('#btnGallery').onclick = $('#btnGallery2').onclick = () => $('#file').click();
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    toast('解析圖片中…', { duration: 1200 });
+    await initDetector();
+    const bmp = await (window.createImageBitmap ? createImageBitmap(f) : new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = URL.createObjectURL(f); }));
+    const w = bmp.width || bmp.naturalWidth, h2 = bmp.height || bmp.naturalHeight;
+    let found = await decodeSource(bmp, w, h2, true);
+    if (!found && window.jsQR) {        // 再試一次：放大到 1600px 並嘗試反相
+      const sc = Math.min(1600 / Math.max(w, h2), 3); cvs.width = Math.round(w * sc); cvs.height = Math.round(h2 * sc); cctx.drawImage(bmp, 0, 0, cvs.width, cvs.height);
+      const im = cctx.getImageData(0, 0, cvs.width, cvs.height), r = jsQR(im.data, im.width, im.height, { inversionAttempts: 'attemptBoth' });
+      if (r && r.data) found = { text: r.data, fmt: 'qr_code', points: [] };
+    }
+    if (bmp.close) bmp.close();
+    if (!found) return toast('圖片中找不到 QR Code');
+    handleCode(found, false);
+  } catch (err) { console.error(err); toast('無法讀取這張圖片'); }
+});
+
+/* ---------- 7. 分頁導覽 ---------- */
+let currentTab = 'scan';
+function switchTab(name) {
+  if (!['scan', 'history', 'settings'].includes(name)) name = 'scan';
+  closeSheet(); currentTab = name;
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+  updateThemeColor();
+  if (name === 'scan') { if (cam.wanted || store.get('scanly.camOK', false)) startCamera(); else showCamCard(true, { btn: '開啟相機', icn: 'camera' }); }
+  else { stopCamera(true); cam.wanted = cam.wanted || store.get('scanly.camOK', false); if (name === 'history') renderHistory(); }
+}
+$$('.tab').forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+// 切到背景時關閉相機（省電、保護隱私），回來時自動恢復
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (cam.running) { cam.resume = true; stopCamera(true); } }
+  else if (cam.resume && currentTab === 'scan') { cam.resume = false; startCamera(); }
+});
+
+/* ---------- 8. 設定頁 ---------- */
+function bindSettings() {
+  $$('[data-setting]').forEach(inp => {
+    inp.checked = !!settings[inp.dataset.setting];
+    inp.onchange = () => { settings[inp.dataset.setting] = inp.checked; saveSettings(); if (inp.dataset.setting === 'saveHistory' && !inp.checked) toast('之後的掃描將不會被儲存'); };
+  });
+  const syncSeg = () => $$('#themeSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.theme === settings.theme)));
+  $$('#themeSeg button').forEach(b => b.onclick = () => { settings.theme = b.dataset.theme; saveSettings(); applyTheme(); syncSeg(); });
+  syncSeg();
+  $('#btnWipe').onclick = async () => {
+    if (await confirmDialog({ title: '清除所有資料？', msg: '將刪除掃描紀錄與所有設定，並還原為預設值。', ok: '全部清除', danger: true })) {
+      ['scanly.history', 'scanly.settings', 'scanly.camOK'].forEach(store.del); history = []; settings = Object.assign({}, DEFAULTS);
+      bindSettings(); applyTheme(); renderHistory(); toast('已還原預設');
+    }
+  };
+}
+
+/* ---------- 9. PWA：安裝、Service Worker、更新 ---------- */
+let deferredPrompt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; refreshInstallHint(); });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; refreshInstallHint(); toast('已安裝 Scanly'); });
+function refreshInstallHint() {
+  $('#installHint').textContent = isStandalone() ? '目前已在 APP 模式執行' : deferredPrompt ? '點此一鍵安裝到裝置' : '加入主畫面，像原生 App 一樣使用';
+}
+$('#btnInstall').onclick = () => {
+  const d = $('#dialog'), bd = $('#backdrop'), close = () => { d.classList.remove('open'); if (!sheetOpen) bd.classList.remove('open'); };
+  const ios = isIOS(); const kids = [h('h3', { text: '安裝 Scanly APP' })];
+  if (isStandalone()) kids.push(h('p', { text: '你正在以獨立 APP 模式使用 Scanly，無需再安裝。' }));
+  else {
+    kids.push(h('p', { text: ios ? '在 iPhone／iPad 的 Safari 依下列步驟加入主畫面：' : deferredPrompt ? '按下方按鈕即可安裝；也可依下列步驟手動安裝。' : '依你的裝置選擇下列步驟：' }));
+    const steps = ios
+      ? [['點選 Safari 底部的「分享」', 'share'], ['向下捲動，選擇「加入主畫面」', 'plus-square'], ['按右上角「新增」完成']]
+      : [['Android Chrome：點右上角選單', 'dots'], ['選擇「安裝應用程式」或「加到主畫面」'], ['電腦 Chrome／Edge：點網址列右側的安裝圖示']];
+    kids.push(h('ol', { class: 'steps' }, steps.map(([t, i]) => h('li', {}, h('span', {}, t, i ? icon(i, 'sm') : null)))));
+  }
+  const btns = h('div', { class: 'actions' });
+  if (deferredPrompt && !isStandalone()) btns.append(h('button', { class: 'btn primary block', onclick: async () => {
+    try { deferredPrompt.prompt(); await deferredPrompt.userChoice; } catch (e) { console.warn(e); } deferredPrompt = null; close(); refreshInstallHint(); } }, icon('download', 'sm'), '立即安裝'));
+  btns.append(h('a', { class: 'btn block', href: 'install.html', target: '_blank', rel: 'noopener' }, icon('external', 'sm'), '完整安裝教學與 QR Code'));
+  btns.append(h('button', { class: 'btn ghost block', text: '關閉', onclick: close }));
+  kids.push(btns); d.replaceChildren(...kids); bd.classList.add('open'); d.classList.add('open'); bd.onclick = close;
+};
+
+let swReg = null;
+function showUpdate(worker) {
+  const bar = $('#update'); bar.hidden = false;
+  $('#btnDoUpdate').onclick = () => { $('#btnDoUpdate').disabled = true; worker.postMessage('SKIP_WAITING'); };   // 通知新版 SW 立即接管，controllerchange 後自動重新載入
+}
+function registerSW() {
+  const okProto = location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
+  if (!('serviceWorker' in navigator) || !okProto) return;
+  const hadController = !!navigator.serviceWorker.controller; let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController || reloading) return; reloading = true; location.reload(); });
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    swReg = reg;
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing; if (!nw) return;
+      nw.addEventListener('statechange', () => { if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdate(nw); });
+    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+  }).catch(e => console.warn('Service Worker 註冊失敗', e));
+}
+$('#btnUpdate').onclick = async () => {
+  if (!swReg) return toast('目前環境不支援離線更新（需 HTTPS）');
+  try { toast('檢查更新中…', { duration: 1200 }); await swReg.update(); setTimeout(() => { if ($('#update').hidden) toast('已是最新版本'); }, 1400); }
+  catch (e) { toast('檢查失敗，請確認網路連線'); }
+};
+
+/* ---------- 10. 啟動 ---------- */
+(function init() {
+  try {
+    applyTheme(); bindSettings(); renderHistory(); refreshInstallHint(); registerSW();
+    $('#verText').textContent = '版本 ' + APP_VERSION;
+    const tab = new URLSearchParams(location.search).get('tab');         // 支援 manifest 捷徑 ?tab=history
+    switchTab(tab || 'scan');
+  } catch (e) { console.error(e); toast('啟動時發生錯誤，請重新整理'); }
+})();
+</script>
+</body>
+</html>
