@@ -5,7 +5,7 @@
    - 靜態資源：先回快取，同時背景更新（stale-while-revalidate）
    - 新版安裝後進入 waiting，等頁面以 postMessage("SKIP_WAITING") 通知才接管
 ============================================================ */
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const CACHE_PREFIX = 'scanly-';
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 
