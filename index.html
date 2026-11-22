@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <!-- ============================================================
-  Scanly · QR 掃描器（PWA）
+  QR掃描器 · QR 掃描器（PWA）
   單一檔案主程式：HTML + CSS + JavaScript 全部內建。
   依賴：同層的 jsQR.js（離線備援解碼器）、manifest.json、sw.js 與圖示。
   功能：相機即時掃描、相簿圖片解碼、結果智慧解析、歷史紀錄、
         深淺色主題、離線可用、可安裝、新版本更新提示。
 ============================================================ -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Scanly · QR 掃描器</title>
+<title>QR掃描器</title>
 <meta name="description" content="快速、安全、可離線使用的 QR Code 與條碼掃描器。">
 
 <!-- PWA / iOS / Android 設定 -->
@@ -19,7 +19,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Scanly">
+<meta name="apple-mobile-web-app-title" content="QR掃描器">
 <meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -338,7 +338,7 @@ a{color:inherit;text-decoration:none}
       <div class="inner">
         <div class="badge"><svg class="ic xl" id="camIcon"><use href="#i-camera"/></svg></div>
         <h2 id="camTitle">開啟相機開始掃描</h2>
-        <p id="camDesc">Scanly 只會在你的裝置上解碼，影像不會上傳到任何伺服器。</p>
+        <p id="camDesc">QR掃描器 只會在你的裝置上解碼，影像不會上傳到任何伺服器。</p>
         <button class="btn primary block" id="btnStart"><svg class="ic sm"><use href="#i-camera"/></svg><span id="btnStartTxt">開啟相機</span></button>
         <button class="btn ghost block" id="btnGallery2"><svg class="ic sm"><use href="#i-image"/></svg>從相簿選擇圖片</button>
       </div>
@@ -414,7 +414,7 @@ a{color:inherit;text-decoration:none}
       <div class="group-label">關於</div>
       <div class="card">
         <div class="row"><span class="ri"><svg class="ic sm"><use href="#i-shield"/></svg></span>
-          <span class="rt"><b>完全本機運算</b><small>相機影像只在你的裝置上處理，Scanly 不會收集或上傳任何掃描內容。離線也能使用。</small></span></div>
+          <span class="rt"><b>完全本機運算</b><small>相機影像只在你的裝置上處理，QR掃描器 不會收集或上傳任何掃描內容。離線也能使用。</small></span></div>
       </div>
     </div></div>
   </section>
@@ -446,12 +446,12 @@ a{color:inherit;text-decoration:none}
 <script>
 'use strict';
 /* ============================================================
-   Scanly 主程式
+   QR掃描器 主程式
    區段：0 工具 → 1 設定 → 2 UI 元件 → 3 內容解析 → 4 歷史紀錄
         → 5 結果面板 → 6 相機與解碼 → 7 分頁導覽 → 8 設定頁
         → 9 PWA（Service Worker、安裝、更新）→ 10 啟動
 ============================================================ */
-const APP_VERSION = '1.0.2';            // 顯示用版本；快取版本請看 sw.js 的 VERSION
+const APP_VERSION = '1.0.3';            // 顯示用版本；快取版本請看 sw.js 的 VERSION
 const NS = 'http://www.w3.org/2000/svg';
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -614,7 +614,7 @@ function analyze(text, fmt) {
 
   if (/^(javascript|data|vbscript|file|blob):/i.test(t)) {
     r.type = 'unsafe'; r.label = '可疑內容'; r.icon = 'alert';
-    r.warns.push('此內容含有程式碼或本機資源協定，Scanly 不會自動執行。請勿在不信任的來源貼上或執行。');
+    r.warns.push('此內容含有程式碼或本機資源協定，QR掃描器 不會自動執行。請勿在不信任的來源貼上或執行。');
   } else if (/^WIFI:/i.test(t)) {
     const w = parseWifi(t); r.type = 'wifi'; r.label = 'Wi‑Fi 網路'; r.icon = 'wifi'; r.title = 'Wi‑Fi：' + (w.S || '未命名');
     add('網路名稱', w.S); add('加密', w.T && w.T !== 'nopass' ? w.T : '無（開放網路）');
@@ -655,7 +655,7 @@ function analyze(text, fmt) {
       r.actions.push({ label: '開啟連結', icon: 'external', primary: true, href: u.href, external: true });
     } else if (u && /^[a-z][a-z0-9+.-]*:$/i.test(u.protocol) && /^[a-z][a-z0-9+.-]*:\/\//i.test(t)) {
       r.type = 'app'; r.label = '應用程式連結'; r.icon = 'app'; add('協定', u.protocol.replace(':', ''));
-      r.warns.push('這個連結會交給其他 App 處理，Scanly 不會自動開啟。請確認來源可信後再手動使用。');
+      r.warns.push('這個連結會交給其他 App 處理，QR掃描器 不會自動開啟。請確認來源可信後再手動使用。');
     } else if (/^\d{8,14}$/.test(t) && fmt && fmt !== 'qr_code') {
       r.type = 'product'; r.label = '商品條碼'; r.icon = 'barcode'; r.title = t;
       r.actions.push({ label: '上網搜尋此條碼', icon: 'search', primary: true, href: 'https://www.google.com/search?q=' + encodeURIComponent(t), external: true });
@@ -709,7 +709,7 @@ $('#btnExport').onclick = async () => {
       const a = analyze(x.text, x.fmt); return [new Date(x.ts).toLocaleString('zh-TW', { hour12: false }), a.label, FMT_NAME[x.fmt] || x.fmt, x.fav ? '是' : '', x.text].map(esc).join(',');
     }).join('\n');
     const file = new File([csv], 'scanly-history.csv', { type: 'text/csv' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Scanly 掃描紀錄' }); }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'QR掃描器 掃描紀錄' }); }
     else downloadBlob(file, 'scanly-history.csv');
   } catch (e) { if (e.name !== 'AbortError') { console.error(e); toast('匯出失敗'); } }
 };
@@ -966,14 +966,14 @@ let deferredPrompt = null;
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; refreshInstallHint(); });
-window.addEventListener('appinstalled', () => { deferredPrompt = null; refreshInstallHint(); toast('已安裝 Scanly'); });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; refreshInstallHint(); toast('已安裝 QR掃描器'); });
 function refreshInstallHint() {
   $('#installHint').textContent = isStandalone() ? '目前已在 APP 模式執行' : deferredPrompt ? '點此一鍵安裝到裝置' : '加入主畫面，像原生 App 一樣使用';
 }
 $('#btnInstall').onclick = () => {
   const d = $('#dialog'), bd = $('#backdrop'), close = () => { d.classList.remove('open'); if (!sheetOpen) bd.classList.remove('open'); };
-  const ios = isIOS(); const kids = [h('h3', { text: '安裝 Scanly APP' })];
-  if (isStandalone()) kids.push(h('p', { text: '你正在以獨立 APP 模式使用 Scanly，無需再安裝。' }));
+  const ios = isIOS(); const kids = [h('h3', { text: '安裝 QR掃描器 APP' })];
+  if (isStandalone()) kids.push(h('p', { text: '你正在以獨立 APP 模式使用 QR掃描器，無需再安裝。' }));
   else {
     kids.push(h('p', { text: ios ? '在 iPhone／iPad 的 Safari 依下列步驟加入主畫面：' : deferredPrompt ? '按下方按鈕即可安裝；也可依下列步驟手動安裝。' : '依你的裝置選擇下列步驟：' }));
     const steps = ios

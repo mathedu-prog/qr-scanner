@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Scanly QR 掃描器",
-  "short_name": "Scanly",
+  "name": "QR掃描器",
+  "short_name": "QR掃描器",
   "description": "快速、安全、可離線使用的 QR Code 與條碼掃描器。",
   "lang": "zh-Hant",
   "dir": "ltr",

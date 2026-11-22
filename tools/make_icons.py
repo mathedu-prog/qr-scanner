@@ -2,7 +2,7 @@
 """產生 PWA 圖示：icon-192.png、icon-512.png、icon-maskable-512.png、apple-touch-icon.png
 用法：python3 tools/make_icons.py
 需求：pip install pillow
-圖案：深色底 + 白色掃描框四角 + 強調色掃描線（與 App 內視覺一致）。
+圖案：深色底 + QR Code 縮圖（三個定位方塊 + 資料點）。
 """
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
@@ -28,49 +28,27 @@ def gradient(size):
 
 
 def draw_mark(size, scale):
-    """畫出圖案（透明底）。scale<1 會縮小圖案，用於 maskable 的安全區。"""
+    """畫出 QR Code 縮圖樣式的圖案（透明底）：三個定位方塊 + 資料點，右下為強調色。
+    scale<1 會縮小圖案，用於 maskable 的安全區。"""
     S = size * SS
     layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
-    box = S * 0.50 * scale            # 掃描框邊長
+    box = S * 0.56 * scale            # 圖案邊長（9×9 格）
+    u = box / 9
     x0 = (S - box) / 2
     y0 = (S - box) / 2
-    x1, y1 = x0 + box, y0 + box
-    w = max(2, int(S * 0.052 * scale))   # 線寬
-    arm = box * 0.34                  # 角線長度
-    r = box * 0.16                    # 圓角
 
-    def corner(cx, cy, sx, sy):
-        # 以兩條直線 + 四分之一圓弧組成圓角線
-        ax, ay = cx + sx * arm, cy
-        bx, by = cx, cy + sy * arm
-        d.line([(ax, ay), (cx + sx * r, cy)], fill=WHITE, width=w)
-        d.line([(cx, cy + sy * r), (bx, by)], fill=WHITE, width=w)
-        ccx, ccy = cx + sx * r, cy + sy * r      # 圓弧圓心
-        rr = r + w / 2                           # PIL 的 arc 線寬往圓內長，外擴半個線寬才會與直線對齊
-        bb = [ccx - rr, ccy - rr, ccx + rr, ccy + rr]
-        start = {(1, 1): 180, (-1, 1): 270, (-1, -1): 0, (1, -1): 90}[(sx, sy)]
-        d.arc(bb, start, start + 90, fill=WHITE, width=w)
-        for px_, py_ in ((ax, ay), (bx, by)):      # 圓角端點
-            d.ellipse([px_ - w / 2, py_ - w / 2, px_ + w / 2, py_ + w / 2], fill=WHITE)
+    def finder(cx, cy):
+        # 定位方塊：外框 4u（線寬 0.9u）+ 中央實心方塊
+        X, Y = x0 + cx * u, y0 + cy * u
+        d.rounded_rectangle([X, Y, X + 4 * u, Y + 4 * u], radius=u * 0.9, outline=WHITE, width=int(u * 0.9))
+        d.rounded_rectangle([X + 1.2 * u, Y + 1.2 * u, X + 2.8 * u, Y + 2.8 * u], radius=u * 0.35, fill=ACCENT + (255,))
 
-    corner(x0, y0, 1, 1)
-    corner(x1, y0, -1, 1)
-    corner(x0, y1, 1, -1)
-    corner(x1, y1, -1, -1)
-
-    # 中央掃描線 + 光暈
-    cy = S / 2
-    lx0, lx1 = x0 + box * 0.14, x1 - box * 0.14
-    glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.line([(lx0, cy), (lx1, cy)], fill=ACCENT + (255,), width=int(w * 1.6))
-    glow = glow.filter(ImageFilter.GaussianBlur(S * 0.018 * scale))
-    layer = Image.alpha_composite(layer, glow)
-    d = ImageDraw.Draw(layer)
-    d.line([(lx0, cy), (lx1, cy)], fill=ACCENT + (255,), width=int(w * 0.9))
-    for px_ in (lx0, lx1):
-        d.ellipse([px_ - w * 0.45, cy - w * 0.45, px_ + w * 0.45, cy + w * 0.45], fill=ACCENT + (255,))
+    finder(0, 0); finder(5, 0); finder(0, 5)
+    # 右下角資料點（模擬 QR 資料區）
+    for cx, cy in [(5, 5), (7, 5), (6, 6), (8, 6), (5, 7), (7, 7), (6, 8), (8, 8), (8, 5)]:
+        X, Y = x0 + cx * u, y0 + cy * u
+        d.rounded_rectangle([X + u * 0.08, Y + u * 0.08, X + u * 0.92, Y + u * 0.92], radius=u * 0.25, fill=WHITE)
     return layer
 
 

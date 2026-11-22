@@ -63,7 +63,7 @@ def matrix_to_svg(m, quiet=4):
             else:
                 x += 1
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" role="img" '
-            f'aria-label="安裝 Scanly 的 QR Code" shape-rendering="crispEdges">'
+            f'aria-label="安裝 QR掃描器 的 QR Code" shape-rendering="crispEdges">'
             f'<rect width="{size}" height="{size}" fill="#fff"/><path fill="#000" d="{"".join(segs)}"/></svg>')
 
 
@@ -94,7 +94,7 @@ def verify(url, html_path, png_path):
     ok &= t1 == url
     # 2) 從 install.html 內嵌 SVG 的 path 還原點陣後解碼（驗證實際輸出的 SVG）
     html = html_path.read_text(encoding="utf-8")
-    vb = re.search(r'<svg[^>]*viewBox="0 0 (\d+) \1"[^>]*aria-label="安裝 Scanly 的 QR Code"', html)
+    vb = re.search(r'<svg[^>]*viewBox="0 0 (\d+) \1"[^>]*aria-label="安裝 QR掃描器 的 QR Code"', html)
     d = re.search(r'<path fill="#000" d="([^"]+)"', html)
     size = int(vb.group(1))
     sc = 12
@@ -133,7 +133,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <!-- 此檔由 tools/build.py 產生；請改 build.py 的模板後重新執行，勿直接手改。 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>安裝 Scanly · QR 掃描器</title>
+<title>安裝 QR掃描器 · QR 掃描器</title>
 <meta name="theme-color" content="#0A0C10">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -191,8 +191,8 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
 <body>
 <main>
   <header>
-    <img src="icon-192.png" alt="Scanly 圖示" width="60" height="60">
-    <div><h1>安裝 Scanly</h1><p>像原生 App 一樣使用，離線也能掃描。</p></div>
+    <img src="icon-192.png" alt="QR掃描器 圖示" width="60" height="60">
+    <div><h1>安裝 QR掃描器</h1><p>像原生 App 一樣使用，離線也能掃描。</p></div>
   </header>
 
   <section class="card qr-card" aria-label="安裝 QR Code">
@@ -223,7 +223,7 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
         <li><span>用 Safari 開啟上方連結（掃描 QR Code 或按「直接開啟」）。</span></li>
         <li><span>點選「分享」按鈕<svg class="ic" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>（iPhone 在畫面底部，iPad 在右上角；若看不到，先點網址列旁或底部的「⋯」）。</span></li>
         <li><span>向下捲動選單，點「加入主畫面」<svg class="ic" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>。</span></li>
-        <li><span>確認名稱後點右上角「新增」，主畫面就會出現 Scanly。</span></li>
+        <li><span>確認名稱後點右上角「新增」，主畫面就會出現 QR掃描器。</span></li>
       </ol>
       <p class="note">iOS 版本不同，選單位置可能略有差異；若沒有「加入主畫面」，請確認是用 Safari 開啟，而非應用程式內建瀏覽器。</p>
     </div>
@@ -237,7 +237,7 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
         <li><span>選擇「安裝應用程式」（部分版本為「加到主畫面」，再選「安裝」）。</span></li>
         <li><span>在確認視窗按「安裝」，之後可從主畫面或應用程式清單開啟。</span></li>
       </ol>
-      <p class="note">若選單裡沒有安裝選項，請先在 Scanly 頁面停留幾秒並重新整理一次，Chrome 才會判定為可安裝。</p>
+      <p class="note">若選單裡沒有安裝選項，請先在 QR掃描器 頁面停留幾秒並重新整理一次，Chrome 才會判定為可安裝。</p>
     </div>
 
     <div class="panel" id="p-desktop" role="tabpanel" aria-labelledby="t-desktop">
@@ -246,16 +246,16 @@ footer{text-align:center;color:var(--muted);font-size:12.5px;padding:6px 0}
       <ol>
         <li><span>用 Chrome 或 Edge 開啟上方連結。</span></li>
         <li><span>點網址列右側的「安裝」圖示<svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>。</span></li>
-        <li><span>在彈出視窗按「安裝」，Scanly 會以獨立視窗開啟，並出現在開始功能表或應用程式清單。</span></li>
+        <li><span>在彈出視窗按「安裝」，QR掃描器 會以獨立視窗開啟，並出現在開始功能表或應用程式清單。</span></li>
       </ol>
-      <p class="note">沒看到圖示？也可從瀏覽器選單找「安裝 Scanly」或「將此網站安裝為應用程式」。Firefox 桌面版目前不支援安裝網頁 App；macOS Safari 17 以上可用「檔案 → 加入 Dock」。</p>
+      <p class="note">沒看到圖示？也可從瀏覽器選單找「安裝 QR掃描器」或「將此網站安裝為應用程式」。Firefox 桌面版目前不支援安裝網頁 App；macOS Safari 17 以上可用「檔案 → 加入 Dock」。</p>
     </div>
   </section>
 
   <section class="card">
     <div class="ok"><svg class="ic" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span>安裝後可離線使用；有新版本時，App 內會顯示「有新版本可用．立即更新」。掃描全程只在你的裝置上處理，不會上傳影像。</span></div>
   </section>
-  <footer>Scanly · 版本頁面連結：{{URL}}</footer>
+  <footer>QR掃描器 · 版本頁面連結：{{URL}}</footer>
 </main>
 <div id="toast" role="status"></div>
 

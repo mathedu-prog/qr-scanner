@@ -1,11 +1,11 @@
 /* ============================================================
-   Scanly Service Worker
+   QR掃描器 Service Worker
    - VERSION：每次發佈更新請遞增（tools/build.py --bump 會自動處理）
    - 頁面導覽：網路優先，離線時退回快取
    - 靜態資源：先回快取，同時背景更新（stale-while-revalidate）
    - 新版安裝後進入 waiting，等頁面以 postMessage("SKIP_WAITING") 通知才接管
 ============================================================ */
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const CACHE_PREFIX = 'scanly-';
 const CACHE_NAME = CACHE_PREFIX + VERSION;
 
